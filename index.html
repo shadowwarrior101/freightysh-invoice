@@ -435,7 +435,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
           <div class="fc"><div class="fch"><div class="fch-ico">🧾</div><div class="fch-title">Invoice Details</div></div>
           <div class="fcb">
             <div class="g2" style="margin-bottom:11px">
-              <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="iCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZU</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZU</option></select></div>
+              <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="iCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZF</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZF</option></select></div>
             </div>
             <div class="g4">
               <div class="f"><label>Invoice No <span>*</span></label>
@@ -579,7 +579,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
           <div class="fc"><div class="fch"><div class="fch-ico">🧾</div><div class="fch-title">Commission Invoice Details</div></div>
           <div class="fcb">
             <div class="g2" style="margin-bottom:11px">
-              <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="cCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZU</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZU</option></select></div>
+              <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="cCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZF</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZF</option></select></div>
             </div>
             <div class="g4">
               <div class="f"><label>Invoice No <span>*</span></label><input class="mono" id="cInvNo" value="FSH/002/25-26"/></div>
@@ -855,7 +855,7 @@ Thank you for your continued support."></div>
           <div style="height:1.5px;background:#E8631A"></div>
           <!-- Registration strip -->
           <div class="ltr-prev-strip">
-            <div class="ltr-prev-strip-c"><div class="ltr-prev-strip-k">GSTIN</div><div class="ltr-prev-strip-v">21AAKFF8134C1ZU</div></div>
+            <div class="ltr-prev-strip-c"><div class="ltr-prev-strip-k">GSTIN</div><div class="ltr-prev-strip-v">21AAKFF8134C1ZF</div></div>
             <div class="ltr-prev-strip-c"><div class="ltr-prev-strip-k">PAN</div><div class="ltr-prev-strip-v">AAKFF8134C</div></div>
             <div class="ltr-prev-strip-c"><div class="ltr-prev-strip-k">SAC</div><div class="ltr-prev-strip-v">9965 / 9967</div></div>
             <div class="ltr-prev-strip-c"><div class="ltr-prev-strip-k">STATE</div><div class="ltr-prev-strip-v">[21] Odisha</div></div>
@@ -954,8 +954,8 @@ const el=id=>document.getElementById(id);
 const g=id=>(el(id)?.value||"").toUpperCase().trim();
 const gr=id=>el(id)?.value||"";
 const COMPANY_PROFILES={
-  odisha:{label:"Rourkela, Odisha",addrLine:"C/308 Koelnagar, Rourkela, Odisha - 769014",addrLineEm:"C/308 Koelnagar, Rourkela, Odisha — 769014, India",gstin:"21AAKFF8134C1ZU",pan:"AAKFF8134C",stateCode:"21",stateName:"Odisha",jurisdiction:"Rourkela"},
-  wb:{label:"Kolkata, West Bengal",addrLine:"C/314 Loharuka Green Oasis, Kaikhali, Kolkata - 700052",addrLineEm:"C/314 Loharuka Green Oasis, Kaikhali, Kolkata — 700052, India",gstin:"19AAKFF8134C1ZU",pan:"AAKFF8134C",stateCode:"19",stateName:"West Bengal",jurisdiction:"Kolkata"}
+  odisha:{label:"Rourkela, Odisha",addrLine:"C/308 Koelnagar, Rourkela, Odisha - 769014",addrLineEm:"C/308 Koelnagar, Rourkela, Odisha — 769014, India",gstin:"21AAKFF8134C1ZF",pan:"AAKFF8134C",stateCode:"21",stateName:"Odisha",jurisdiction:"Rourkela"},
+  wb:{label:"Kolkata, West Bengal",addrLine:"C/314 Loharuka Green Oasis, Kaikhali, Kolkata - 700052",addrLineEm:"C/314 Loharuka Green Oasis, Kaikhali, Kolkata — 700052, India",gstin:"19AAKFF8134C1ZF",pan:"AAKFF8134C",stateCode:"19",stateName:"West Bengal",jurisdiction:"Kolkata"}
 };
 const companyProfile=prefix=>COMPANY_PROFILES[el(prefix+"Company")?.value]||COMPANY_PROFILES.odisha;
 const fmt=n=>Math.abs(n).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -2191,7 +2191,7 @@ header{background:#0A2463;padding:8mm ${margin} 9mm;display:flex;align-items:cen
   </header>
   <div class="bar-orange"></div>
   <div class="reg-strip">
-    <div class="reg-c"><span class="reg-k">GSTIN</span><span class="reg-v">21AAKFF8134C1ZU</span></div>
+    <div class="reg-c"><span class="reg-k">GSTIN</span><span class="reg-v">21AAKFF8134C1ZF</span></div>
     <div class="reg-c"><span class="reg-k">PAN</span><span class="reg-v">AAKFF8134C</span></div>
     <div class="reg-c"><span class="reg-k">SAC</span><span class="reg-v">9965 / 9967</span></div>
     <div class="reg-c"><span class="reg-k">State</span><span class="reg-v">[21] Odisha</span></div>
