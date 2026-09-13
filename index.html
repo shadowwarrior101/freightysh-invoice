@@ -988,7 +988,8 @@ function toggleTheme(){
 
 // ─── Dashboard ──────────────────────────────────────────────
 function renderDashboard(){
-  const reg=LS.get("invoiceRegister",[])||[];
+  const rawReg=LS.get("invoiceRegister",[])||[];
+  const reg=dedupedRegister(rawReg); // one entry per invoice number (latest instance wins)
   const now=new Date();
   const month=reg.filter(r=>{if(!r.date)return false;const d=new Date(r.date);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
   const monthRev=month.reduce((s,r)=>s+(Number(r.amount)||0),0);
@@ -1400,6 +1401,21 @@ function nextInvNo(last){if(!last)return null;const parts=last.split("/");if(par
 function resetInvNo(){const last=LS.get("lastInvNo");if(last){const nxt=nextInvNo(last);if(nxt&&el("iNo"))el("iNo").value=nxt;}else if(el("iNo"))el("iNo").value="FSH/001/25-26";}
 
 // ─── Register ─────────────────────────────────────────────────
+// For any calculation (totals, monthly revenue, counts), an invoice number may
+// appear multiple times in the register (e.g. re-generated to fix a mistake).
+// This returns only the latest saved instance per invoice number.
+function dedupedRegister(reg){
+  reg=reg||LS.get("invoiceRegister",[])||[];
+  const latest=new Map(); // key: normalized invNo -> entry
+  reg.forEach(r=>{
+    const key=(r.invNo||"").trim().toUpperCase();
+    if(!key)return; // no invoice number to dedupe on, keep as-is below
+    const prev=latest.get(key);
+    if(!prev||new Date(r.savedAt||0)>new Date(prev.savedAt||0))latest.set(key,r);
+  });
+  const noNumber=reg.filter(r=>!(r.invNo||"").trim());
+  return[...latest.values(),...noNumber].sort((a,b)=>new Date(b.savedAt||0)-new Date(a.savedAt||0));
+}
 function pushToRegister(entry){
   const reg=LS.get("invoiceRegister",[])||[];
   // If same invoice number already exists, replace it (avoids duplicates when re-generating an edited invoice)
