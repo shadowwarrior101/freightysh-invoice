@@ -98,6 +98,8 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
 .dt td{padding:10px 13px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text);transition:background var(--tr)}
 .dt tr:last-child td{border-bottom:none}
 .dt tbody tr:hover td{background:var(--card2)}
+.row-act{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 9px;font-size:.72rem;font-weight:600;cursor:pointer;transition:var(--tr)}
+.row-act:hover{background:var(--navy);color:#fff;border-color:var(--navy)}
 .mono{font-family:"JetBrains Mono",monospace;font-size:.76rem}
 .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 .badge-tax{background:rgba(37,99,235,.1);color:#2563EB}
@@ -1311,10 +1313,14 @@ function renderRegister(){
   if(tf!=="all")reg=reg.filter(r=>r.type&&r.type.includes(tf));
   const cnt=el("regCount");if(cnt)cnt.textContent=reg.length+" invoice"+(reg.length!==1?"s":"");
   if(!reg.length){el("registerTable").innerHTML='<div class="empty"><div class="empty-ico">📭</div><h3>No invoices found</h3><p>Try a different search, or create new invoices from the Create Invoice screen.</p></div>';return;}
-  let h='<table class="dt"><thead><tr><th>Invoice No</th><th>Type</th><th>Customer</th><th>Amount (INR)</th><th>Date</th><th>Saved At</th></tr></thead><tbody>';
+  let h='<table class="dt"><thead><tr><th>Invoice No</th><th>Type</th><th>Customer</th><th>Amount (INR)</th><th>Date</th><th>Saved At</th><th>Actions</th></tr></thead><tbody>';
+  // Map filtered rows back to their real index in the full register so edit/copy target the right entry
+  const fullReg=LS.get("invoiceRegister",[])||[];
   reg.forEach(r=>{
     const bc=r.type&&r.type.includes("Commission")?"badge-comm":r.type&&r.type.includes("Proforma")?"badge-pro":"badge-tax";
-    h+='<tr><td class="mono">'+(r.invNo||"—")+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td></tr>';
+    const realIdx=fullReg.indexOf(r);
+    const actions=r.snapshot?'<button class="row-act" onclick="loadInvoiceFromRegister('+realIdx+',&quot;edit&quot;)">✎ Edit</button> <button class="row-act" onclick="loadInvoiceFromRegister('+realIdx+',&quot;copy&quot;)">⧉ Copy</button>':'<span style="color:var(--muted);font-size:.72rem">—</span>';
+    h+='<tr><td class="mono">'+(r.invNo||"—")+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td><td style="white-space:nowrap">'+actions+'</td></tr>';
   });
   h+='</tbody></table>';
   el("registerTable").innerHTML=h;
@@ -1378,6 +1384,18 @@ function showDraftBanner(draft){
 function clearTaxDraft(){LS.set("taxDraft",null);const b=el("draftBanner");if(b)b.style.display="none";toast("Draft cleared","ok");}
 function autoSaveTaxDraft(){LS.set("taxDraft",collectTaxDraft());}
 
+// ─── Commission Draft (for edit/copy from register) ───────────
+function collectCommDraft(){
+  const ids=["cCompany","cInvNo","cInvDate","cDueDate","cTaxType","cRate","cToName","cToAddr","cToState","cToStateCode","cToGstin","cToPan"];
+  const vals={};ids.forEach(id=>{const e=el(id);if(e)vals[id]=e.value;});
+  return{vals,commRows:JSON.parse(JSON.stringify(commRows)),savedAt:new Date().toISOString()};
+}
+function restoreCommDraft(draft){
+  if(!draft)return;
+  Object.entries(draft.vals||{}).forEach(([id,v])=>{const e=el(id);if(e)e.value=v;});
+  if(Array.isArray(draft.commRows)&&draft.commRows.length)commRows=JSON.parse(JSON.stringify(draft.commRows));
+}
+
 // ─── Invoice No Auto-increment ────────────────────────────────
 function nextInvNo(last){if(!last)return null;const parts=last.split("/");if(parts.length<3||isNaN(parseInt(parts[1],10)))return null;const n=parseInt(parts[1],10)+1;parts[1]=String(n).padStart(parts[1].length,"0");return parts.join("/");}
 function resetInvNo(){const last=LS.get("lastInvNo");if(last){const nxt=nextInvNo(last);if(nxt&&el("iNo"))el("iNo").value=nxt;}else if(el("iNo"))el("iNo").value="FSH/001/25-26";}
@@ -1385,9 +1403,40 @@ function resetInvNo(){const last=LS.get("lastInvNo");if(last){const nxt=nextInvN
 // ─── Register ─────────────────────────────────────────────────
 function pushToRegister(entry){
   const reg=LS.get("invoiceRegister",[])||[];
+  // If same invoice number already exists, replace it (avoids duplicates when re-generating an edited invoice)
+  const existing=entry.invNo?reg.findIndex(r=>r.invNo===entry.invNo&&r.type===entry.type):-1;
+  if(existing>=0)reg.splice(existing,1);
   reg.unshift({...entry,savedAt:new Date().toISOString()});
   if(reg.length>100)reg.length=100;
   LS.set("invoiceRegister",reg);
+}
+
+// ─── Load a saved invoice back into the form (Edit / Copy) ──────
+function loadInvoiceFromRegister(i,mode){
+  const reg=LS.get("invoiceRegister",[])||[];
+  const r=reg[i];
+  if(!r){toast("Invoice not found","err");return;}
+  if(!r.snapshot){toast("This invoice was saved before edit was supported — no data to load","err");return;}
+  const type=r.invType||(r.type&&r.type.toLowerCase().includes("commission")?"commission":r.type&&r.type.toLowerCase().includes("proforma")?"proforma":"tax");
+  setInvType(type);
+  if(type==="commission"){
+    restoreCommDraft(r.snapshot);
+    if(mode==="copy"){
+      const nxt=nextInvNo(g("cInvNo"));if(nxt&&el("cInvNo"))el("cInvNo").value=nxt;
+      const today=new Date().toISOString().slice(0,10);if(el("cInvDate"))el("cInvDate").value=today;
+    }
+    rebuildCommRows();refreshCommTotals();
+  }else{
+    restoreTaxDraft(r.snapshot);
+    if(mode==="copy"){
+      const nxt=nextInvNo(g("iNo"));if(nxt&&el("iNo"))el("iNo").value=nxt;
+      const today=new Date().toISOString().slice(0,10);if(el("iDt"))el("iDt").value=today;
+    }
+    rebuildRows();refreshTotals();
+  }
+  showScreen("create");
+  schedulePreview();
+  toast(mode==="copy"?"Copied to a new invoice — review number & date":"Loaded for editing","ok");
 }
 function openHistory(){
   const reg=LS.get("invoiceRegister",[])||[];
@@ -1715,8 +1764,10 @@ function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
     }else{doc.save(fname);toast("PDF downloaded!","ok");}
     if(!proforma){
       LS.set("lastInvNo",g("iNo"));
-      pushToRegister({invNo:g("iNo"),customer:g("cNm"),amount:gt,date:gr("iDt"),type:"Tax Invoice"});
+      pushToRegister({invNo:g("iNo"),customer:g("cNm"),amount:gt,date:gr("iDt"),type:"Tax Invoice",invType:"tax",snapshot:collectTaxDraft()});
       LS.set("taxDraft",null);
+    }else{
+      pushToRegister({invNo:g("iNo"),customer:g("cNm"),amount:gt,date:gr("iDt"),type:"Proforma Invoice",invType:"proforma",snapshot:collectTaxDraft()});
     }
    }catch(e){console.error(e);toast("Error: "+e.message,"err");}
    finally{if(btn){btn.disabled=false;btn.textContent=returnDoc?"Preview":"Download Invoice (PDF)";if(!returnDoc)btn.onclick=makePDF;} hideLoading();}
@@ -1930,7 +1981,7 @@ function makeCommissionPDF(returnDoc,onDoc){
       toast("PDF opened - tap Share to Save to Files","ok");
     }else{doc.save(fname);toast("PDF downloaded!","ok");}
     LS.set("lastInvNo",g("cInvNo"));
-    pushToRegister({invNo:g("cInvNo"),customer:g("cToName"),amount:net,date:gr("cInvDate"),type:"Commission Invoice"});
+    pushToRegister({invNo:g("cInvNo"),customer:g("cToName"),amount:net,date:gr("cInvDate"),type:"Commission Invoice",invType:"commission",snapshot:collectCommDraft()});
    }catch(e){console.error(e);toast("Error: "+e.message,"err");}
    finally{if(btn&&!returnDoc){btn.disabled=false;btn.textContent="Download Commission Invoice (PDF)";}hideLoading();}
   },100);
