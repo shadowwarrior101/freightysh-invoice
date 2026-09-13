@@ -1306,7 +1306,9 @@ function deleteTemplate(i){const tpls=LS.get("templates",[])||[];tpls.splice(i,1
 
 // ─── Register ─────────────────────────────────────────────────
 function renderRegister(){
-  let reg=LS.get("invoiceRegister",[])||[];
+  const fullReg=LS.get("invoiceRegister",[])||[];
+  // Keep track of each row's real index in the full register before filtering
+  let reg=fullReg.map((r,idx)=>({...r,_idx:idx}));
   const q=(el("regSearch")?.value||"").toLowerCase();
   const tf=el("regType")?.value||"all";
   if(q)reg=reg.filter(r=>JSON.stringify(r).toLowerCase().includes(q));
@@ -1314,12 +1316,9 @@ function renderRegister(){
   const cnt=el("regCount");if(cnt)cnt.textContent=reg.length+" invoice"+(reg.length!==1?"s":"");
   if(!reg.length){el("registerTable").innerHTML='<div class="empty"><div class="empty-ico">📭</div><h3>No invoices found</h3><p>Try a different search, or create new invoices from the Create Invoice screen.</p></div>';return;}
   let h='<table class="dt"><thead><tr><th>Invoice No</th><th>Type</th><th>Customer</th><th>Amount (INR)</th><th>Date</th><th>Saved At</th><th>Actions</th></tr></thead><tbody>';
-  // Map filtered rows back to their real index in the full register so edit/copy target the right entry
-  const fullReg=LS.get("invoiceRegister",[])||[];
   reg.forEach(r=>{
     const bc=r.type&&r.type.includes("Commission")?"badge-comm":r.type&&r.type.includes("Proforma")?"badge-pro":"badge-tax";
-    const realIdx=fullReg.indexOf(r);
-    const actions=r.snapshot?'<button class="row-act" onclick="loadInvoiceFromRegister('+realIdx+',&quot;edit&quot;)">✎ Edit</button> <button class="row-act" onclick="loadInvoiceFromRegister('+realIdx+',&quot;copy&quot;)">⧉ Copy</button>':'<span style="color:var(--muted);font-size:.72rem">—</span>';
+    const actions=r.snapshot?'<button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;edit&quot;)">✎ Edit</button> <button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;copy&quot;)">⧉ Copy</button>':'<span style="color:var(--muted);font-size:.72rem">—</span>';
     h+='<tr><td class="mono">'+(r.invNo||"—")+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td><td style="white-space:nowrap">'+actions+'</td></tr>';
   });
   h+='</tbody></table>';
