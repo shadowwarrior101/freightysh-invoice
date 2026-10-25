@@ -10,6 +10,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/gstin.js"></script>
+<script src="js/legacy-import.js"></script>
+<script src="js/invoice-store.js"></script>
 <style>
 
 :root{
@@ -320,9 +325,31 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
 .ltr-prev-sigline{width:60px;height:1px;background:#0A2463;margin:10px 0 4px}
 .ltr-prev-footer{background:#0A2463;padding:4px 10px;display:flex;justify-content:space-between}
 
+/* Auth gate: the app is unusable until signed in, so nothing can be generated unarchived */
+.auth-gate{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+.auth-gate.off{display:none}
+.auth-card{background:var(--card);border:1px solid var(--border);border-radius:var(--rlg);box-shadow:var(--sh);padding:28px;width:100%;max-width:380px}
+.auth-card h2{font-family:'DM Serif Display',serif;color:var(--text);font-size:1.5rem;margin:0 0 6px}
+.auth-card p{color:var(--text2);font-size:.85rem;margin:0 0 16px;line-height:1.5}
+.auth-card input{width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--card2);color:var(--text);font-size:.9rem;margin-bottom:10px}
+.auth-card button{width:100%;padding:10px;border:0;border-radius:var(--r);background:var(--navy);color:#fff;font-weight:600;cursor:pointer}
+.auth-msg{font-size:.8rem;margin-top:12px;color:var(--text2);min-height:1em}
+.auth-msg.err{color:#DC2626}
+.gst-bad{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#FEE2E2;color:#B91C1C;font-size:.68rem;font-weight:600;white-space:nowrap}
 </style>
 </head>
 <body>
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <h2>Freightysh Invoices</h2>
+    <p>Sign in to create invoices. Every invoice is archived to the shared register.</p>
+    <form onsubmit="event.preventDefault();sendLoginLink();">
+      <input type="email" id="authEmail" placeholder="you@freightysh.in" autocomplete="email" required/>
+      <button type="submit" id="authBtn">Email me a login link</button>
+    </form>
+    <div class="auth-msg" id="authMsg">Checking session…</div>
+  </div>
+</div>
 <nav class="nav">
   <div class="nav-l">
     <img id="navLogo" class="nav-logo" alt="Freightysh" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCADIAMgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD06iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKADtRR2ooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAO1FHaigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigA7UUdqKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKADtRQelFABRRRQAUVTvdUtLJtkzkvjOxRk1HZ6xaXkwhj8wOegZetZ+1hzct9TRUqjjzW0NCiiitDMKKKpXmq2lnMI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a25TA6CiudvNWuyk8SNEkhjnIQKweMp93J6HPX+WetWJb6/W9jtzLbIRMYyTGQrkxhlHXg5yPf8ASjlYG1UUkbyceaUX/Y4P51jSa5PsSbZFFCWKPv5fcuNwC5GcEkcZPHQ1Y026u/OjjuCjxytPtODuXa+Bk9+D6Dp3ocQTNCG1ggJaOMBj1Y8sfqTzU1FFSklsNtvcD0ooPSimIKKKKACiiigAwKYIYxMZQg8wqF3ew5x+tPooAKKKKACiiigBk0KTxGOQZU+hI/UUkEEVvEI4UCrkn1yT1JPc1JRQAUYFFFADIYo4IljiQIijAA7U+iigAooooAgjs7eO4M6x/vDnkknGeuM9M+1SuiujIw4YYPOKdRQBHDDHBEsUSBUXoKkoooAKKKKAA9KKD0ooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAD0ooPSigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAPSig9KKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAA9KKD0ooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAD0ooooA//2Q=="/>
@@ -679,7 +706,8 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
       </select>
       <span id="regCount" style="font-size:.82rem;color:var(--muted);white-space:nowrap"></span>
       <button class="exp-btn" onclick="exportCSV()">⬇ Export CSV</button>
-      <button class="exp-btn" style="background:var(--orange)" onclick="clearHistory()">Clear All</button>
+      <button class="exp-btn" onclick="importLocalRegister()" title="Upload invoices saved in this browser before the online register existed">⬆ Import this browser's history</button>
+      <button class="exp-btn" style="background:var(--muted)" onclick="InvoiceStore.signOut()" id="signOutBtn">Sign out</button>
     </div>
     <div id="registerTable"></div>
   </div>
@@ -988,7 +1016,7 @@ function toggleTheme(){
 
 // ─── Dashboard ──────────────────────────────────────────────
 function renderDashboard(){
-  const rawReg=LS.get("invoiceRegister",[])||[];
+  const rawReg=InvoiceStore.register();
   const reg=dedupedRegister(rawReg); // one entry per invoice number (latest instance wins)
   const now=new Date();
   const month=reg.filter(r=>{if(!r.date)return false;const d=new Date(r.date);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
@@ -1307,7 +1335,7 @@ function deleteTemplate(i){const tpls=LS.get("templates",[])||[];tpls.splice(i,1
 
 // ─── Register ─────────────────────────────────────────────────
 function renderRegister(){
-  const fullReg=LS.get("invoiceRegister",[])||[];
+  const fullReg=InvoiceStore.register();
   // Keep track of each row's real index in the full register before filtering
   let reg=fullReg.map((r,idx)=>({...r,_idx:idx}));
   const q=(el("regSearch")?.value||"").toLowerCase();
@@ -1319,14 +1347,17 @@ function renderRegister(){
   let h='<table class="dt"><thead><tr><th>Invoice No</th><th>Type</th><th>Customer</th><th>Amount (INR)</th><th>Date</th><th>Saved At</th><th>Actions</th></tr></thead><tbody>';
   reg.forEach(r=>{
     const bc=r.type&&r.type.includes("Commission")?"badge-comm":r.type&&r.type.includes("Proforma")?"badge-pro":"badge-tax";
-    const actions=r.snapshot?'<button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;edit&quot;)">✎ Edit</button> <button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;copy&quot;)">⧉ Copy</button>':'<span style="color:var(--muted);font-size:.72rem">—</span>';
-    h+='<tr><td class="mono">'+(r.invNo||"—")+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td><td style="white-space:nowrap">'+actions+'</td></tr>';
+    const pdf=r.pdfPath?'<button class="row-act" onclick="openArchivedPDF('+r._idx+')">⬇ PDF</button> ':'';
+    const actions=pdf+(r.snapshot?'<button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;edit&quot;)">✎ Edit</button> <button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;copy&quot;)">⧉ Copy</button>':(pdf?'':'<span style="color:var(--muted);font-size:.72rem">—</span>'));
+    // Flags invoices printed with a seller GSTIN that fails the checksum (e.g. imported from the 1ZF/1ZU windows)
+    const gstBad=r.sellerGstin&&!GSTIN.isValid(r.sellerGstin)?'<span class="gst-bad" title="Printed with invalid seller GSTIN '+r.sellerGstin+'">⚠ bad GSTIN</span>':'';
+    h+='<tr><td class="mono">'+(r.invNo||"—")+gstBad+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td><td style="white-space:nowrap">'+actions+'</td></tr>';
   });
   h+='</tbody></table>';
   el("registerTable").innerHTML=h;
 }
 function exportCSV(){
-  const reg=LS.get("invoiceRegister",[])||[];
+  const reg=InvoiceStore.register();
   if(!reg.length){toast("No invoices to export","err");return;}
   const headers=["Invoice No","Type","Customer","Amount (INR)","Date","Saved At"];
   const dataRows=reg.map(r=>[r.invNo||"",r.type||"",r.customer||"",r.amount||0,r.date||"",r.savedAt||""]);
@@ -1339,7 +1370,17 @@ function exportCSV(){
   setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1000);
   toast("Exported to CSV!","ok");
 }
-function clearHistory(){if(!confirm("Clear all invoice history?"))return;LS.set("invoiceRegister",null);renderRegister();renderDashboard();toast("History cleared","ok");}
+async function openArchivedPDF(i){
+  const r=InvoiceStore.register()[i];
+  try{window.open(await InvoiceStore.pdfUrl(r.pdfPath),"_blank","noopener");}catch(e){toast(e.message,"err");}
+}
+async function importLocalRegister(){
+  try{
+    const res=await InvoiceStore.importLocalRegister();
+    renderRegister();renderDashboard();
+    toast("Imported "+res.imported+", already there "+res.skipped+(res.invalid?", unusable "+res.invalid:"")+" (of "+res.total+")","ok");
+  }catch(e){toast(e.message,"err");}
+}
 
 // ─── Address Book ─────────────────────────────────────────────
 function populateAddrBook(){
@@ -1405,7 +1446,7 @@ function resetInvNo(){const last=LS.get("lastInvNo");if(last){const nxt=nextInvN
 // appear multiple times in the register (e.g. re-generated to fix a mistake).
 // This returns only the latest saved instance per invoice number.
 function dedupedRegister(reg){
-  reg=reg||LS.get("invoiceRegister",[])||[];
+  reg=reg||InvoiceStore.register();
   const latest=new Map(); // key: normalized invNo -> entry
   reg.forEach(r=>{
     const key=(r.invNo||"").trim().toUpperCase();
@@ -1416,19 +1457,10 @@ function dedupedRegister(reg){
   const noNumber=reg.filter(r=>!(r.invNo||"").trim());
   return[...latest.values(),...noNumber].sort((a,b)=>new Date(b.savedAt||0)-new Date(a.savedAt||0));
 }
-function pushToRegister(entry){
-  const reg=LS.get("invoiceRegister",[])||[];
-  // If same invoice number already exists, replace it (avoids duplicates when re-generating an edited invoice)
-  const existing=entry.invNo?reg.findIndex(r=>r.invNo===entry.invNo&&r.type===entry.type):-1;
-  if(existing>=0)reg.splice(existing,1);
-  reg.unshift({...entry,savedAt:new Date().toISOString()});
-  if(reg.length>100)reg.length=100;
-  LS.set("invoiceRegister",reg);
-}
 
 // ─── Load a saved invoice back into the form (Edit / Copy) ──────
 function loadInvoiceFromRegister(i,mode){
-  const reg=LS.get("invoiceRegister",[])||[];
+  const reg=InvoiceStore.register();
   const r=reg[i];
   if(!r){toast("Invoice not found","err");return;}
   if(!r.snapshot){toast("This invoice was saved before edit was supported — no data to load","err");return;}
@@ -1454,7 +1486,7 @@ function loadInvoiceFromRegister(i,mode){
   toast(mode==="copy"?"Copied to a new invoice — review number & date":"Loaded for editing","ok");
 }
 function openHistory(){
-  const reg=LS.get("invoiceRegister",[])||[];
+  const reg=InvoiceStore.register();
   const wrap=el("histTableWrap");const cnt=el("histCount");
   if(!reg.length){wrap.innerHTML='<p style="color:var(--muted);font-size:.84rem;padding:14px 0">No invoices yet.</p>';if(cnt)cnt.textContent="";}
   else{
@@ -1515,10 +1547,25 @@ function toast(msg,type){
   e.classList.add("on");setTimeout(()=>e.classList.remove("on"),3200);
 }
 
+// Archive first, then hand the PDF over. If archiving fails this throws and
+// the user gets no PDF, so every issued invoice is in the register.
+async function deliverPDF(doc,fname,rec){
+  await InvoiceStore.archive(rec,doc.output("blob"));
+  const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if(isMobile){
+    const blob=doc.output("blob"),url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},3000);
+    toast("Archived · PDF opened - tap Share to Save to Files","ok");
+  }else{doc.save(fname);toast("Archived · PDF downloaded!","ok");}
+  renderRegister();renderDashboard();
+}
+
 function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
   const btn=document.getElementById(returnDoc?"previewBtn":"genBtn");
   if(btn){btn.disabled=true;btn.textContent="Generating...";}
-  setTimeout(()=>{
+  setTimeout(async()=>{
    try{
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
@@ -1769,21 +1816,8 @@ function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
     if(returnDoc&&onDoc){onDoc(doc);if(btn){btn.disabled=false;btn.textContent="Preview";btn.onclick=makePDF;}return;}
 
     const fname=(g("iNo")||"FSH-INVOICE").split("/").join("-")+".pdf";
-    const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if(isMobile){
-      const blob=doc.output("blob"),url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},3000);
-      toast("PDF opened - tap Share to Save to Files","ok");
-    }else{doc.save(fname);toast("PDF downloaded!","ok");}
-    if(!proforma){
-      LS.set("lastInvNo",g("iNo"));
-      pushToRegister({invNo:g("iNo"),customer:g("cNm"),amount:gt,date:gr("iDt"),type:"Tax Invoice",invType:"tax",snapshot:collectTaxDraft()});
-      LS.set("taxDraft",null);
-    }else{
-      pushToRegister({invNo:g("iNo"),customer:g("cNm"),amount:gt,date:gr("iDt"),type:"Proforma Invoice",invType:"proforma",snapshot:collectTaxDraft()});
-    }
+    await deliverPDF(doc,fname,{invType:proforma?"proforma":"tax",invNo:g("iNo"),invDate:gr("iDt"),office:gr("iCompany"),sellerGstin:CO.gstin,customerName:g("cNm"),customerGstin:g("cGs"),amount:gt,snapshot:collectTaxDraft()});
+    if(!proforma){LS.set("lastInvNo",g("iNo"));LS.set("taxDraft",null);}
    }catch(e){console.error(e);toast("Error: "+e.message,"err");}
    finally{if(btn){btn.disabled=false;btn.textContent=returnDoc?"Preview":"Download Invoice (PDF)";if(!returnDoc)btn.onclick=makePDF;} hideLoading();}
   },100);
@@ -1791,7 +1825,7 @@ function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
 function makeCommissionPDF(returnDoc,onDoc){
   const btn=document.getElementById("genBtn");
   if(btn&&!returnDoc){btn.disabled=true;btn.textContent="Generating...";}
-  setTimeout(()=>{
+  setTimeout(async()=>{
    try{
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
@@ -1987,23 +2021,35 @@ function makeCommissionPDF(returnDoc,onDoc){
     if(returnDoc&&onDoc){onDoc(doc);if(btn)btn.textContent="Download Commission Invoice (PDF)";return;}
 
     const fname=(g("cInvNo")||"FSH-COMMISSION").split("/").join("-")+".pdf";
-    const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if(isMobile){
-      const blob=doc.output("blob"),url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},3000);
-      toast("PDF opened - tap Share to Save to Files","ok");
-    }else{doc.save(fname);toast("PDF downloaded!","ok");}
+    await deliverPDF(doc,fname,{invType:"commission",invNo:g("cInvNo"),invDate:gr("cInvDate"),office:gr("cCompany"),sellerGstin:CO.gstin,customerName:g("cToName"),customerGstin:g("cToGstin"),amount:net,snapshot:collectCommDraft()});
     LS.set("lastInvNo",g("cInvNo"));
-    pushToRegister({invNo:g("cInvNo"),customer:g("cToName"),amount:net,date:gr("cInvDate"),type:"Commission Invoice",invType:"commission",snapshot:collectCommDraft()});
    }catch(e){console.error(e);toast("Error: "+e.message,"err");}
    finally{if(btn&&!returnDoc){btn.disabled=false;btn.textContent="Download Commission Invoice (PDF)";}hideLoading();}
   },100);
 }
 
 // ─── Init ────────────────────────────────────────────────────
+// ─── Auth gate + online register ─────────────────────────────
+function authMsg(text,isErr){const m=el("authMsg");if(m){m.textContent=text;m.className="auth-msg"+(isErr?" err":"");}}
+async function sendLoginLink(){
+  const btn=el("authBtn");btn.disabled=true;
+  try{await InvoiceStore.sendLoginLink(el("authEmail").value);authMsg("Check your inbox for the login link.");}
+  catch(e){authMsg(e.message,true);}
+  finally{btn.disabled=false;}
+}
+async function startOnlineRegister(){
+  try{
+    const email=await InvoiceStore.session();
+    if(!email){authMsg("");return;}
+    await InvoiceStore.refresh();
+    el("authGate").classList.add("off");
+    const so=el("signOutBtn");if(so)so.title="Signed in as "+email;
+    renderRegister();renderDashboard();
+  }catch(e){authMsg(e.message,true);}
+}
+
 document.addEventListener("DOMContentLoaded",function(){
+  startOnlineRegister();
   // Load signature/seal from localStorage (shared with letterhead)
   window.SIG_DATA = localStorage.getItem('fsh-sig') || localStorage.getItem('fsh-ltr-sig') || '';
   // Theme
