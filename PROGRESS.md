@@ -1,5 +1,55 @@
 # PROGRESS
 
+## 2026-11-26: Numbering, cancel, credit notes (+ tracker Accounts & GSTR-1)
+
+### Why
+Invoice numbers were computed per browser (`lastInvNo`), so FSH/033/26-27
+was issued to Carbon King (WB) and Chemstack (Odisha). There was no way to
+cancel or credit an invoice, no payment tracking, and the CA got invoices by hand.
+
+### What was done (this repo)
+- **Server-issued numbers:** numbers come from `reserve_document_number()`
+  on download. Number fields are read-only.
+  - **Edit:** re-issues the loaded number.
+  - **New / Copy / Duplicate / templates:** get the next number.
+  - **Series:** FY 26-27 is one series shared by both offices
+    (`FSH/{n}/26-27`, next 041). Proformas use `PRO/{n}`, credit notes
+    `FSH/CN/{n}/26-27`.
+- **Cancel:** a register action, permanent, reason required. The number
+  can't be reused, and cancelled invoices leave receivables and dashboard revenue.
+- **Credit notes:** a register action on any live invoice. The user enters the
+  credit per line, and it's capped by earlier credit notes. Generates its own PDF
+  (`js/credit-note.js`); the maths is in `js/credit-note-calc.js` (tested).
+- **Dashboard:** revenue excludes proformas and cancelled documents, and
+  subtracts credit notes.
+- **Fixes:**
+  - Default dates use local time; `toISOString()` gave yesterday before
+    05:30 IST, and the wrong FY on 1 April.
+  - Commission snapshots now save `cUsdRate`.
+- **Migrations:** they now live in the **milestone tracker repo**
+  (`supabase/migrations`), which owns the shared DB's history.
+  `supabase/` was removed from this repo.
+
+### Data fix
+- Chemstack's FSH/033/26-27 record version was voided (`invoice_record_events`,
+  event `void`) on the owner's instruction. Carbon King's FSH/033 stands;
+  Chemstack's invoice is FSH/034.
+
+### Deploy order (important)
+1. Push this repo (GitHub Pages).
+2. **Immediately** apply the tracker repo's
+   `supabase/migrations/require_reserved_document_numbers.sql`. It rejects
+   numbers not issued by the series. Applying it earlier would break the
+   old app version, which still uses typed numbers.
+
+### Open items
+- FSH/036 and FSH/037 (Nov, WB office → Micbac, WB) were charged IGST on an
+  intra-state supply; they should have been CGST+SGST. Raise with the CA.
+- FY 27-28: add one `document_series` row per office (separate series per GSTIN)
+  before 1 April 2027, or reserving a number fails with a clear message.
+- Not tested with a real login. Tested: DB rules per role (SQL, rolled back),
+  UI flows with the network stubbed, credit note PDF render.
+
 ## 2026-10-25: Online invoice register
 
 ### Why
