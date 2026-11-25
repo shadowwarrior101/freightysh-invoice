@@ -15,6 +15,8 @@
 <script src="js/gstin.js"></script>
 <script src="js/legacy-import.js"></script>
 <script src="js/invoice-store.js"></script>
+<script src="js/credit-note-calc.js"></script>
+<script src="js/credit-note.js"></script>
 <style>
 
 :root{
@@ -468,7 +470,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
             </div>
             <div class="g4">
               <div class="f"><label>Invoice No <span>*</span></label>
-                <div style="display:flex;align-items:center;gap:6px"><input class="mono" id="iNo" value="FSH/001/25-26" style="flex:1"/><button class="reset-link" onclick="resetInvNo()">↺</button></div>
+                <input class="mono" id="iNo" value="" readonly placeholder="Assigned on download" title="Numbers come from the shared series when you download"/>
               </div>
               <div class="f"><label>Invoice Date <span>*</span></label><input type="date" id="iDt"/></div>
               <div class="f"><label>Due Date</label><input type="date" id="iDd"/></div>
@@ -611,7 +613,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
               <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="cCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZU</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZF</option></select></div>
             </div>
             <div class="g4">
-              <div class="f"><label>Invoice No <span>*</span></label><input class="mono" id="cInvNo" value="FSH/002/25-26"/></div>
+              <div class="f"><label>Invoice No <span>*</span></label><input class="mono" id="cInvNo" value="" readonly placeholder="Assigned on download" title="Numbers come from the shared series when you download"/></div>
               <div class="f"><label>Invoice Date <span>*</span></label><input type="date" id="cInvDate"/></div>
               <div class="f"><label>Due Date</label><input type="date" id="cDueDate"/></div>
               <div class="f"><label>USD/INR Rate</label><input class="mono" type="number" id="cUsdRate" value="94" step="0.01"/></div>
@@ -703,6 +705,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
         <option value="Tax">Tax Invoice</option>
         <option value="Commission">Commission Invoice</option>
         <option value="Proforma">Proforma Invoice</option>
+        <option value="Credit">Credit Note</option>
       </select>
       <span id="regCount" style="font-size:.82rem;color:var(--muted);white-space:nowrap"></span>
       <button class="exp-btn" onclick="exportCSV()">⬇ Export CSV</button>
@@ -931,6 +934,27 @@ Thank you for your continued support."></div>
   </div>
 </div>
 
+<div class="modal-bd" id="cnModal">
+  <div class="modal-box">
+    <div class="modal-hd"><h3 id="cnTitle">Credit note</h3><button class="modal-close" onclick="CreditNote.close()">✕</button></div>
+    <div class="modal-body">
+      <p id="cnMeta" style="font-size:.84rem;color:var(--text2);margin:0 0 14px"></p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">
+        <div class="f"><label>Credit note date <span>*</span></label><input type="date" id="cnDate"/></div>
+        <div class="f"><label>Reason <span>*</span></label><select id="cnReason"></select></div>
+        <div class="f"><label>Details</label><input id="cnNote" placeholder="e.g. agreed discount on ocean freight"/></div>
+      </div>
+      <div style="overflow-x:auto"><table class="dt"><thead><tr><th>Line</th><th>SAC</th><th style="text-align:right">Invoiced taxable</th><th style="text-align:right">GST</th><th>Credit taxable (INR)</th></tr></thead><tbody id="cnLines"></tbody></table></div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:14px">
+        <button class="btn bs bsm" onclick="CreditNote.creditAll()">Credit full invoice</button>
+        <span id="cnTotals" class="mono" style="font-size:.82rem;color:var(--text)"></span>
+      </div>
+      <div id="cnError" style="color:#B91C1C;font-size:.8rem;min-height:1.2em;margin-top:8px"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn bp" id="cnGenBtn" onclick="CreditNote.generate()">Generate credit note (PDF)</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- Preview Modal -->
 <div id="previewModal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.7);flex-direction:column;align-items:center;justify-content:center">
   <div style="background:var(--card);border-radius:14px;width:min(95vw,1100px);height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
@@ -981,6 +1005,9 @@ function n2w(n){
 
 const LS={get:(k,d=null)=>{try{return JSON.parse(localStorage.getItem(k))??d;}catch{return d;}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}}};
 const el=id=>document.getElementById(id);
+// YYYY-MM-DD in the user's own time zone. toISOString() is UTC, which before
+// 05:30 IST gives yesterday (and on 1 April, last financial year).
+const localDate=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const g=id=>(el(id)?.value||"").toUpperCase().trim();
 const gr=id=>el(id)?.value||"";
 const COMPANY_PROFILES={
@@ -1003,7 +1030,7 @@ function showScreen(id){
   if(id==="templates")renderTemplates();
   if(id==="letterhead")initLtrEditor();
 }
-function startInvoice(type){setInvType(type);showScreen("create");}
+function startInvoice(type){clearDocNo("iNo");clearDocNo("cInvNo");setInvType(type);showScreen("create");}
 
 // ─── Theme ──────────────────────────────────────────────────
 function toggleTheme(){
@@ -1019,13 +1046,15 @@ function renderDashboard(){
   const rawReg=InvoiceStore.register();
   const reg=dedupedRegister(rawReg); // one entry per invoice number (latest instance wins)
   const now=new Date();
-  const month=reg.filter(r=>{if(!r.date)return false;const d=new Date(r.date);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-  const monthRev=month.reduce((s,r)=>s+(Number(r.amount)||0),0);
-  const totalRev=reg.reduce((s,r)=>s+(Number(r.amount)||0),0);
+  const rev=reg.filter(r=>!r.cancelledAt&&r.invType!=="proforma");
+  const signed=r=>(r.invType==="credit_note"?-1:1)*(Number(r.amount)||0);
+  const month=rev.filter(r=>{if(!r.date)return false;const d=new Date(r.date);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const monthRev=month.reduce((s,r)=>s+signed(r),0);
+  const totalRev=rev.reduce((s,r)=>s+signed(r),0);
   el("stat-month").textContent="INR "+fmtI(monthRev);
   el("stat-total").textContent="INR "+fmtI(totalRev);
-  el("stat-count").textContent=reg.length;
-  el("stat-mcount").textContent=month.length;
+  el("stat-count").textContent=rev.filter(r=>r.invType!=="credit_note").length;
+  el("stat-mcount").textContent=month.filter(r=>r.invType!=="credit_note").length;
   const recent=reg.slice(0,8);
   if(!recent.length){el("recentTable").innerHTML='<div class="empty"><div class="empty-ico">📭</div><h3>No invoices yet</h3><p>Create your first invoice to see it here.</p></div>';return;}
   let h='<table class="dt"><thead><tr><th>Invoice No</th><th>Type</th><th>Customer</th><th>Amount (INR)</th><th>Date</th></tr></thead><tbody>';
@@ -1348,10 +1377,15 @@ function renderRegister(){
   reg.forEach(r=>{
     const bc=r.type&&r.type.includes("Commission")?"badge-comm":r.type&&r.type.includes("Proforma")?"badge-pro":"badge-tax";
     const pdf=r.pdfPath?'<button class="row-act" onclick="openArchivedPDF('+r._idx+')">⬇ PDF</button> ':'';
-    const actions=pdf+(r.snapshot?'<button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;edit&quot;)">✎ Edit</button> <button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;copy&quot;)">⧉ Copy</button>':(pdf?'':'<span style="color:var(--muted);font-size:.72rem">—</span>'));
+    const isCN=r.invType==="credit_note",live=!r.cancelledAt;
+    const editCopy=r.snapshot&&!isCN?(live?'<button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;edit&quot;)">✎ Edit</button> ':'')+'<button class="row-act" onclick="loadInvoiceFromRegister('+r._idx+',&quot;copy&quot;)">⧉ Copy</button> ':'';
+    const cnBtn=live&&r.docKind==="invoice"&&r.snapshot?'<button class="row-act" onclick="CreditNote.open(InvoiceStore.register()['+r._idx+'])">− Credit note</button> ':'';
+    const cancelBtn=live&&r.source==="app"&&r.invType!=="proforma"?'<button class="row-act" style="color:#B91C1C" onclick="cancelDocument('+r._idx+')">✕ Cancel</button>':'';
+    const actions=(pdf+editCopy+cnBtn+cancelBtn)||'<span style="color:var(--muted);font-size:.72rem">—</span>';
     // Flags invoices printed with a seller GSTIN that fails the checksum (e.g. imported from the 1ZF/1ZU windows)
     const gstBad=r.sellerGstin&&!GSTIN.isValid(r.sellerGstin)?'<span class="gst-bad" title="Printed with invalid seller GSTIN '+r.sellerGstin+'">⚠ bad GSTIN</span>':'';
-    h+='<tr><td class="mono">'+(r.invNo||"—")+gstBad+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td><td style="white-space:nowrap">'+actions+'</td></tr>';
+    const cxl=r.cancelledAt?'<span class="gst-bad" title="'+(r.cancelReason||"").replace(/"/g,"&quot;")+'">CANCELLED</span>':'';
+    h+='<tr'+(r.cancelledAt?' style="opacity:.6"':'')+'><td class="mono">'+(r.invNo||"—")+gstBad+cxl+'</td><td><span class="badge '+bc+'">'+(r.type||"—")+'</span></td><td>'+(r.customer||"—")+'</td><td style="font-family:Georgia,serif;font-size:.97rem">'+(r.amount!=null?(r.invType==="credit_note"?"−":"")+Number(r.amount).toLocaleString("en-IN"):"—")+'</td><td>'+(r.date||"—")+'</td><td style="color:var(--muted);font-size:.78rem">'+(r.savedAt?new Date(r.savedAt).toLocaleDateString():"—")+'</td><td style="white-space:nowrap">'+actions+'</td></tr>';
   });
   h+='</tbody></table>';
   el("registerTable").innerHTML=h;
@@ -1369,6 +1403,14 @@ function exportCSV(){
   document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1000);
   toast("Exported to CSV!","ok");
+}
+async function cancelDocument(i){
+  const r=InvoiceStore.register()[i];if(!r)return;
+  const reason=prompt("Cancel "+r.invNo+" ("+(r.customer||"")+")?\n\nThis is permanent and the number can't be used again. If GSTR-1 for this month is already filed, issue a credit note instead.\n\nReason:");
+  if(reason===null)return;
+  if(!reason.trim()){toast("A reason is required to cancel","err");return;}
+  try{await InvoiceStore.cancel(r.id,reason.trim());renderRegister();renderDashboard();toast(r.invNo+" cancelled","ok");}
+  catch(e){toast(e.message,"err");}
 }
 async function openArchivedPDF(i){
   const r=InvoiceStore.register()[i];
@@ -1415,6 +1457,7 @@ function restoreTaxDraft(draft){
   if(!draft)return;
   Object.entries(draft.vals||{}).forEach(([id,v])=>{const e=el(id);if(e)e.value=v;});
   if(Array.isArray(draft.rows))rows=draft.rows;
+  clearDocNo("iNo");
 }
 function showDraftBanner(draft){
   const banner=el("draftBanner");if(!banner)return;
@@ -1427,7 +1470,7 @@ function autoSaveTaxDraft(){LS.set("taxDraft",collectTaxDraft());}
 
 // ─── Commission Draft (for edit/copy from register) ───────────
 function collectCommDraft(){
-  const ids=["cCompany","cInvNo","cInvDate","cDueDate","cTaxType","cRate","cToName","cToAddr","cToState","cToStateCode","cToGstin","cToPan"];
+  const ids=["cCompany","cInvNo","cInvDate","cDueDate","cTaxType","cRate","cUsdRate","cToName","cToAddr","cToState","cToStateCode","cToGstin","cToPan"];
   const vals={};ids.forEach(id=>{const e=el(id);if(e)vals[id]=e.value;});
   return{vals,commRows:JSON.parse(JSON.stringify(commRows)),savedAt:new Date().toISOString()};
 }
@@ -1435,11 +1478,22 @@ function restoreCommDraft(draft){
   if(!draft)return;
   Object.entries(draft.vals||{}).forEach(([id,v])=>{const e=el(id);if(e)e.value=v;});
   if(Array.isArray(draft.commRows)&&draft.commRows.length)commRows=JSON.parse(JSON.stringify(draft.commRows));
+  clearDocNo("cInvNo");
 }
 
 // ─── Invoice No Auto-increment ────────────────────────────────
-function nextInvNo(last){if(!last)return null;const parts=last.split("/");if(parts.length<3||isNaN(parseInt(parts[1],10)))return null;const n=parseInt(parts[1],10)+1;parts[1]=String(n).padStart(parts[1].length,"0");return parts.join("/");}
-function resetInvNo(){const last=LS.get("lastInvNo");if(last){const nxt=nextInvNo(last);if(nxt&&el("iNo"))el("iNo").value=nxt;}else if(el("iNo"))el("iNo").value="FSH/001/25-26";}
+// Numbers come from reserve_document_number() on download. `issuedNo` is set
+// only while editing an existing document (or after downloading one), so that
+// re-downloading re-issues the same number; every other path gets a new one.
+let issuedNo=null; // {field, kind, no}
+function clearDocNo(field){if(el(field))el(field).value="";if(issuedNo&&issuedNo.field===field)issuedNo=null;}
+async function assignDocNo(field,kind,office,date){
+  const cur=g(field);
+  if(issuedNo&&issuedNo.field===field&&issuedNo.kind===kind&&issuedNo.no===cur)return cur;
+  const no=await InvoiceStore.reserveNumber(kind,office,date);
+  el(field).value=no;issuedNo={field,kind,no};
+  return no;
+}
 
 // ─── Register ─────────────────────────────────────────────────
 // For any calculation (totals, monthly revenue, counts), an invoice number may
@@ -1464,26 +1518,24 @@ function loadInvoiceFromRegister(i,mode){
   const r=reg[i];
   if(!r){toast("Invoice not found","err");return;}
   if(!r.snapshot){toast("This invoice was saved before edit was supported — no data to load","err");return;}
+  if(r.invType==="credit_note"){toast("Credit notes can't be edited; cancel it and raise a new one","err");return;}
+  if(mode==="edit"&&r.cancelledAt){toast(r.invNo+" is cancelled; use Copy to start a new invoice from it","err");return;}
   const type=r.invType||(r.type&&r.type.toLowerCase().includes("commission")?"commission":r.type&&r.type.toLowerCase().includes("proforma")?"proforma":"tax");
   setInvType(type);
   if(type==="commission"){
     restoreCommDraft(r.snapshot);
-    if(mode==="copy"){
-      const nxt=nextInvNo(g("cInvNo"));if(nxt&&el("cInvNo"))el("cInvNo").value=nxt;
-      const today=new Date().toISOString().slice(0,10);if(el("cInvDate"))el("cInvDate").value=today;
-    }
+    if(mode==="copy"){const today=localDate();if(el("cInvDate"))el("cInvDate").value=today;}
+    else{el("cInvNo").value=r.invNo;issuedNo={field:"cInvNo",kind:"invoice",no:r.invNo};}
     rebuildCommRows();refreshCommTotals();
   }else{
     restoreTaxDraft(r.snapshot);
-    if(mode==="copy"){
-      const nxt=nextInvNo(g("iNo"));if(nxt&&el("iNo"))el("iNo").value=nxt;
-      const today=new Date().toISOString().slice(0,10);if(el("iDt"))el("iDt").value=today;
-    }
+    if(mode==="copy"){const today=localDate();if(el("iDt"))el("iDt").value=today;}
+    else{el("iNo").value=r.invNo;issuedNo={field:"iNo",kind:type==="proforma"?"proforma":"invoice",no:r.invNo};}
     rebuildRows();refreshTotals();
   }
   showScreen("create");
   schedulePreview();
-  toast(mode==="copy"?"Copied to a new invoice — review number & date":"Loaded for editing","ok");
+  toast(mode==="copy"?"Copied — a new number is assigned on download":"Editing "+r.invNo+" — downloading re-issues this number","ok");
 }
 function openHistory(){
   const reg=InvoiceStore.register();
@@ -1524,12 +1576,10 @@ function makePDF(){
 // ─── Duplicate / Email ────────────────────────────────────────
 function duplicateInvoice(){
   go(0);
-  const last=LS.get("lastInvNo");
-  const nxt=nextInvNo(last||gr("iNo")||"FSH/000/25-26");
-  if(nxt&&el("iNo"))el("iNo").value=nxt;
-  const today=new Date().toISOString().slice(0,10);
+  clearDocNo("iNo");
+  const today=localDate();
   if(el("iDt"))el("iDt").value=today;
-  toast("Duplicated — update date and number","ok");
+  toast("Duplicated — a new number is assigned on download","ok");
 }
 function emailDraft(){
   const t=totals();const invNo=g("iNo")||"Invoice";const cust=g("cNm")||"Customer";
@@ -1567,6 +1617,7 @@ function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
   if(btn){btn.disabled=true;btn.textContent="Generating...";}
   setTimeout(async()=>{
    try{
+    if(!returnDoc)await assignDocNo("iNo",proforma?"proforma":"invoice",gr("iCompany"),gr("iDt"));
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
     const PW=297,PH=210,ML=12,MR=12,CW=PW-ML-MR;
@@ -1630,7 +1681,7 @@ function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
     rect(mtX,Y,halfW,blockH,W,LINE,0.3);
     rect(mtX,Y,halfW,6,NAVY);
     fn(6.4,"bold");tc(W);doc.text("INVOICE DETAILS",mtX+3,Y+4.1);
-    const meta=[["Invoice No.",g("iNo")],["Invoice Date",fd(gr("iDt"))],
+    const meta=[["Invoice No.",g("iNo")||"(assigned on download)"],["Invoice Date",fd(gr("iDt"))],
       ["Due Date",fd(gr("iDd"))],["Place of Supply","["+g("cSc")+"] "+g("cSt")],
       ["Shipment Type",g("iSt")],["Shipper Ref",g("iSr")],
       ["Incoterms",g("sIn")],["1 USD =","INR "+usd.toFixed(2)]];
@@ -1817,7 +1868,7 @@ function makeTaxInvoicePDF(proforma=false,returnDoc=false,onDoc=null){
 
     const fname=(g("iNo")||"FSH-INVOICE").split("/").join("-")+".pdf";
     await deliverPDF(doc,fname,{invType:proforma?"proforma":"tax",invNo:g("iNo"),invDate:gr("iDt"),office:gr("iCompany"),sellerGstin:CO.gstin,customerName:g("cNm"),customerGstin:g("cGs"),amount:gt,snapshot:collectTaxDraft()});
-    if(!proforma){LS.set("lastInvNo",g("iNo"));LS.set("taxDraft",null);}
+    if(!proforma)LS.set("taxDraft",null);
    }catch(e){console.error(e);toast("Error: "+e.message,"err");}
    finally{if(btn){btn.disabled=false;btn.textContent=returnDoc?"Preview":"Download Invoice (PDF)";if(!returnDoc)btn.onclick=makePDF;} hideLoading();}
   },100);
@@ -1827,6 +1878,7 @@ function makeCommissionPDF(returnDoc,onDoc){
   if(btn&&!returnDoc){btn.disabled=true;btn.textContent="Generating...";}
   setTimeout(async()=>{
    try{
+    if(!returnDoc)await assignDocNo("cInvNo","invoice",gr("cCompany"),gr("cInvDate"));
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
     const PW=297,PH=210,ML=12,MR=12,CW=PW-ML-MR;
@@ -1886,7 +1938,7 @@ function makeCommissionPDF(returnDoc,onDoc){
 
     rect(mtX,Y,halfW,blockH,W,LINE,0.3); rect(mtX,Y,halfW,6,NAVY);
     fn(6.4,"bold");tc(W);doc.text("INVOICE DETAILS",mtX+3,Y+4.1);
-    const meta=[["Invoice No.",g("cInvNo")],["Invoice Date",fd(gr("cInvDate"))],
+    const meta=[["Invoice No.",g("cInvNo")||"(assigned on download)"],["Invoice Date",fd(gr("cInvDate"))],
       ["Due Date",fd(gr("cDueDate"))],["Place of Supply","["+g("cToStateCode")+"] "+g("cToState")],
       ["SAC / HSN",SAC],["1 USD =","INR "+usd.toFixed(2)],
       ["Tax Type",cg?"CGST + SGST":"IGST @ 18%"],["Nature","FREIGHT FWDG. COMMISSION"]];
@@ -2022,7 +2074,6 @@ function makeCommissionPDF(returnDoc,onDoc){
 
     const fname=(g("cInvNo")||"FSH-COMMISSION").split("/").join("-")+".pdf";
     await deliverPDF(doc,fname,{invType:"commission",invNo:g("cInvNo"),invDate:gr("cInvDate"),office:gr("cCompany"),sellerGstin:CO.gstin,customerName:g("cToName"),customerGstin:g("cToGstin"),amount:net,snapshot:collectCommDraft()});
-    LS.set("lastInvNo",g("cInvNo"));
    }catch(e){console.error(e);toast("Error: "+e.message,"err");}
    finally{if(btn&&!returnDoc){btn.disabled=false;btn.textContent="Download Commission Invoice (PDF)";}hideLoading();}
   },100);
@@ -2059,15 +2110,12 @@ document.addEventListener("DOMContentLoaded",function(){
   if(tgl)tgl.textContent=theme==="dark"?"☀":"🌙";
 
   // Dates
-  const today=new Date().toISOString().slice(0,10);
-  const due=new Date(Date.now()+5*864e5).toISOString().slice(0,10);
+  const today=localDate();
+  const due=localDate(new Date(Date.now()+5*864e5));
   const fields=["iDt","cInvDate"];fields.forEach(function(id){const e=document.getElementById(id);if(e&&!e.value)e.value=today;});
   const dfields=["iDd","cDueDate"];dfields.forEach(function(id){const e=document.getElementById(id);if(e&&!e.value)e.value=due;});
   const mbl=document.getElementById("sMd");if(mbl&&!mbl.value)mbl.value=today;
 
-  // Auto-increment
-  const lastNo=LS.get("lastInvNo");
-  if(lastNo){const nxt=nextInvNo(lastNo);if(nxt){const e=document.getElementById("iNo");if(e)e.value=nxt;}}
 
   // Restore draft
   const taxDraft=LS.get("taxDraft");
@@ -2170,7 +2218,7 @@ function initLtrEditor(){
     if(clr)clr.style.display='';
   }
   // Set today's date
-  const d=document.getElementById("ltrDate");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);
+  const d=document.getElementById("ltrDate");if(d&&!d.value)d.value=localDate();
   updateLtrPreview();
 }
 

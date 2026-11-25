@@ -5,7 +5,7 @@
   const cfg = root.FSH_CONFIG;
   const sb = root.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
   const BUCKET = "invoices";
-  const LABEL = { tax: "Tax Invoice", proforma: "Proforma Invoice", commission: "Commission Invoice" };
+  const LABEL = { tax: "Tax Invoice", proforma: "Proforma Invoice", commission: "Commission Invoice", credit_note: "Credit Note" };
 
   let cache = []; // latest version per invoice, newest first, in the legacy register shape
   let userEmail = null;
@@ -32,6 +32,10 @@
       customerGstin: r.customer_gstin,
       pdfPath: r.pdf_path,
       source: r.source,
+      docKind: r.doc_kind,  // tax + commission share the 'invoice' number series
+      cancelledAt: r.cancelled_at,
+      cancelReason: r.cancel_reason,
+      refRecordId: r.ref_record_id,
     };
   }
 
@@ -107,14 +111,33 @@
       amount: rec.amount,
       snapshot: rec.snapshot,
       pdf_path: path,
+      ref_record_id: rec.refRecordId || null,
     }).select().single();
     // The orphaned PDF can't be deleted (no delete policy, by design); it's
     // harmless and the user simply retries.
     if (error) fail("Could not save invoice record", error);
 
-    const entry = toEntry(data);
-    cache = [entry, ...cache.filter((e) => !(e.invType === entry.invType && e.invNo.trim().toUpperCase() === entry.invNo.trim().toUpperCase()))];
-    return entry;
+    // Re-read rather than patching the cache: the view decides doc_kind and
+    // which version is current.
+    await refresh();
+    return toEntry(data);
+  }
+
+  // Next number in the server-side series for this kind of document
+  // ('invoice' | 'credit_note' | 'proforma'), office and date.
+  async function reserveNumber(kind, office, date) {
+    if (!date) throw new Error("Set the document date first; it decides the financial year");
+    const { data, error } = await sb.rpc("reserve_document_number", { p_kind: kind, p_office: office, p_date: date });
+    if (error) fail("Could not get a document number", error);
+    return data;
+  }
+
+  // Permanent: the number can't be issued again and the invoice drops out of
+  // receivables. recordId = the current version's id.
+  async function cancel(recordId, reason) {
+    const { error } = await sb.from("invoice_record_events").insert({ record_id: recordId, event: "cancel", reason });
+    if (error) fail("Could not cancel", error);
+    await refresh();
   }
 
   async function pdfUrl(path) {
@@ -142,7 +165,7 @@
   }
 
   root.InvoiceStore = {
-    session, sendLoginLink, signOut, refresh, archive, pdfUrl, importLocalRegister,
+    session, sendLoginLink, signOut, refresh, archive, pdfUrl, importLocalRegister, reserveNumber, cancel,
     register: () => cache,
     email: () => userEmail,
   };
