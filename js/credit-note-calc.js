@@ -45,10 +45,15 @@
 
   // lines: [{desc, sac, gst, taxable, credit}]; credit = taxable value credited.
   function totals(lines, type) {
+    // Same rounding as the invoice PDFs: CGST and SGST are equal halves,
+    // each rounded; IGST is rounded once at the full rate.
     const out = lines.filter((l) => l.credit > 0).map((l) => {
-      const tax = round2((l.credit * l.gst) / 100);
-      const cgst = type === "cgst_sgst" ? round2(tax / 2) : 0;
-      return { ...l, tax, cgst, sgst: type === "cgst_sgst" ? round2(tax - cgst) : 0, igst: type === "cgst_sgst" ? 0 : tax };
+      if (type === "cgst_sgst") {
+        const half = round2((l.credit * l.gst) / 200);
+        return { ...l, tax: round2(half * 2), cgst: half, sgst: half, igst: 0 };
+      }
+      const igst = round2((l.credit * l.gst) / 100);
+      return { ...l, tax: igst, cgst: 0, sgst: 0, igst };
     });
     const taxable = round2(out.reduce((s, l) => s + l.credit, 0));
     const tax = round2(out.reduce((s, l) => s + l.tax, 0));

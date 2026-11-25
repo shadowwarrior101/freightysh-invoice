@@ -57,11 +57,12 @@ describe("totals", () => {
     const t = CN.totals(lines, "cgst_sgst");
     expect(t.lines).toHaveLength(2);
     expect(t.taxable).toBe(1100.5);
-    expect(t.tax).toBe(185.03); // 5.03 + 180
-    expect(t.cgst + t.sgst).toBeCloseTo(t.tax, 2);
+    expect(t.cgst).toBe(t.sgst); // equal halves, as the invoice PDF prints them
+    expect(t.cgst).toBe(92.51); // 2.51 (5% of 100.50 / 2) + 90
+    expect(t.tax).toBe(185.02);
     expect(t.igst).toBe(0);
     expect(t.total).toBe(1286);
-    expect(t.roundOff).toBe(0.47);
+    expect(t.roundOff).toBe(0.48);
   });
 
   it("puts everything in IGST for inter-state", () => {
