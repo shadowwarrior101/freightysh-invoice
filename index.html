@@ -469,7 +469,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
               <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="iCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZU</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZF</option></select></div>
             </div>
             <div class="g4">
-              <div class="f"><label>Invoice No <span>*</span></label>
+              <div class="f"><label>Invoice No</label>
                 <input class="mono" id="iNo" value="" readonly placeholder="Assigned on download" title="Numbers come from the shared series when you download"/>
               </div>
               <div class="f"><label>Invoice Date <span>*</span></label><input type="date" id="iDt"/></div>
@@ -613,7 +613,7 @@ input,select,textarea{font-family:"DM Sans",sans-serif}
               <div class="f s2"><label>Registered Office / GSTIN <span>*</span></label><select id="cCompany" onchange="renderPreview()"><option value="odisha" selected>Rourkela, Odisha — GSTIN 21AAKFF8134C1ZU</option><option value="wb">Kolkata, West Bengal — GSTIN 19AAKFF8134C1ZF</option></select></div>
             </div>
             <div class="g4">
-              <div class="f"><label>Invoice No <span>*</span></label><input class="mono" id="cInvNo" value="" readonly placeholder="Assigned on download" title="Numbers come from the shared series when you download"/></div>
+              <div class="f"><label>Invoice No</label><input class="mono" id="cInvNo" value="" readonly placeholder="Assigned on download" title="Numbers come from the shared series when you download"/></div>
               <div class="f"><label>Invoice Date <span>*</span></label><input type="date" id="cInvDate"/></div>
               <div class="f"><label>Due Date</label><input type="date" id="cDueDate"/></div>
               <div class="f"><label>USD/INR Rate</label><input class="mono" type="number" id="cUsdRate" value="94" step="0.01"/></div>
@@ -1096,7 +1096,8 @@ function go(n){
   schedulePreview();
 }
 function chk(n){
-  const req={0:["iNo","iDt","cNm","cAd"],1:["sMb","sSh","sCn"]};
+  // The number isn't required here: it is assigned on download.
+  const req={0:["iDt","cNm","cAd"],1:["sMb","sSh","sCn"]};
   for(const id of(req[n]||[])){const e=el(id);if(!e?.value?.trim()){toast("Fill all required fields","err");e?.focus();return false;}}
   return true;
 }
@@ -1114,7 +1115,7 @@ function cgo(n){
   window.scrollTo({top:0,behavior:"smooth"});
 }
 function cchk(n){
-  const req={0:["cInvNo","cInvDate","cToName"]};
+  const req={0:["cInvDate","cToName"]};
   for(const id of(req[n]||[])){const e=el(id);if(!e?.value?.trim()){toast("Fill all required fields","err");e?.focus();return false;}}
   return true;
 }
